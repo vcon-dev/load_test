@@ -1,0 +1,31 @@
+# Example configuration for vCon Load Test
+# This shows the configuration that will be sent to the conserver
+
+links:
+  random_tag:
+    module: links.tag
+    ingress-lists: ["load_test_list"]
+    egress-lists: []
+    options:
+      tags:
+        load_test: "true"
+        test_id: "example_test_123"
+        timestamp: "2024-01-01T00:00:00Z"
+  
+  webhook:
+    module: links.webhook
+    options:
+      webhook-urls: ["http://localhost:8080/webhook"]
+
+storages:
+  file_storage:
+    module: storage.file
+    options:
+      directory: "./test_results"
+
+chains:
+  load_test_chain:
+    links: ["random_tag", "webhook"]
+    ingress_lists: ["load_test_list"]
+    storages: ["file_storage"]
+    enabled: 1
