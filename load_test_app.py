@@ -93,6 +93,11 @@ class LoadTester:
     async def setup_conserver_config(self) -> bool:
         """Setup conserver configuration with ingress list and webhook"""
         try:
+            # Ensure test directory exists
+            test_dir = Path(self.config.test_directory)
+            test_dir.mkdir(parents=True, exist_ok=True)
+            logger.info(f"Test directory: {test_dir.resolve()}")
+            
             # Create test configuration
             config = {
                 "links": {
@@ -119,7 +124,10 @@ class LoadTester:
                     "file_storage": {
                         "module": "storage.file",
                         "options": {
-                            "directory": self.config.test_directory
+                            "path": "/app/test_results",
+                            "add_timestamp_to_filename": False,
+                            "filename": "vcon",
+                            "extension": "json"
                         }
                     }
                 },
@@ -335,10 +343,14 @@ class LoadTester:
         # Count webhook data
         test_results["webhook_received"] = len(self.webhook_data)
         
-        # Check saved files
-        test_dir = Path(self.config.test_directory)
-        if test_dir.exists():
-            test_results["files_saved"] = len(list(test_dir.glob("*.vcon")))
+        # Check saved files (conserver saves to /app/test_results which is mounted at /root/vcon-server/test_results)
+        conserver_test_dir = Path("/root/vcon-server/test_results")
+        if conserver_test_dir.exists():
+            # Count .json files (conserver saves with .json extension)
+            vcon_files = list(conserver_test_dir.glob("*.json"))
+            test_results["files_saved"] = len(vcon_files)
+        else:
+            test_results["files_saved"] = 0
         
         return test_results
     
