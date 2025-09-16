@@ -125,7 +125,7 @@ class LoadTester:
                         "module": "storage.file",
                         "options": {
                             "path": "/app/test_results",
-                            "add_timestamp_to_filename": False,
+                            "add_timestamp_to_filename": True,
                             "filename": "vcon",
                             "extension": "json"
                         }
