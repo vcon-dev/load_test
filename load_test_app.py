@@ -24,12 +24,16 @@ from urllib.parse import urljoin
 import click
 import httpx
 import yaml
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 from vcon import Vcon
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(
@@ -51,6 +55,17 @@ class TestConfig(BaseModel):
     amount: int = 100  # total requests
     duration: int = 60  # test duration in seconds
     sample_vcon_path: str = "./sample_vcons"
+    
+    # JLINC Tracer Configuration
+    jlinc_enabled: bool = False
+    jlinc_data_store_api_url: str = "http://jlinc-server:9090"
+    jlinc_data_store_api_key: str = ""
+    jlinc_archive_api_url: str = "http://jlinc-server:9090"
+    jlinc_archive_api_key: str = ""
+    jlinc_system_prefix: str = "VCONTest"
+    jlinc_agreement_id: str = "00000000-0000-0000-0000-000000000000"
+    jlinc_hash_event_data: bool = True
+    jlinc_dlq_vcon_on_error: bool = True
 
 
 class WebhookData(BaseModel):
@@ -69,6 +84,7 @@ class LoadTester:
         self.config = config
         self.webhook_data: List[WebhookData] = []
         self.test_results: List[Dict[str, Any]] = []
+        self.config_backup_path: Optional[str] = None
         self.app = FastAPI(title="vCon Load Test Webhook Server")
         self.setup_webhook_routes()
         
@@ -90,6 +106,65 @@ class LoadTester:
                 logger.error(f"Error processing webhook: {e}")
                 raise HTTPException(status_code=400, detail=str(e))
     
+    async def backup_existing_config(self) -> Optional[str]:
+        """Backup existing conserver configuration to a temporary file"""
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{self.config.conserver_url}/config",
+                    headers={"x-conserver-api-token": self.config.conserver_token}
+                )
+                
+                if response.status_code == 200:
+                    existing_config = response.json()
+                    
+                    # Save to temporary file
+                    backup_path = Path(self.config.test_directory) / f"conserver_config_backup_{int(time.time())}.yml"
+                    backup_path.parent.mkdir(parents=True, exist_ok=True)
+                    
+                    with open(backup_path, 'w') as f:
+                        yaml.dump(existing_config, f, default_flow_style=False)
+                    
+                    logger.info(f"Backed up existing configuration to: {backup_path}")
+                    return str(backup_path)
+                else:
+                    logger.warning(f"Could not retrieve existing configuration: {response.status_code} - {response.text}")
+                    return None
+                    
+        except Exception as e:
+            logger.warning(f"Error backing up existing configuration: {e}")
+            return None
+    
+    async def restore_config(self, backup_path: str) -> bool:
+        """Restore conserver configuration from backup file"""
+        try:
+            if not Path(backup_path).exists():
+                logger.error(f"Backup file not found: {backup_path}")
+                return False
+            
+            # Load backup configuration
+            with open(backup_path, 'r') as f:
+                backup_config = yaml.safe_load(f)
+            
+            # Restore configuration
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{self.config.conserver_url}/config",
+                    json=backup_config,
+                    headers={"x-conserver-api-token": self.config.conserver_token}
+                )
+                
+                if response.status_code in [200, 204]:
+                    logger.info("Successfully restored original configuration")
+                    return True
+                else:
+                    logger.error(f"Failed to restore configuration: {response.status_code} - {response.text}")
+                    return False
+                    
+        except Exception as e:
+            logger.error(f"Error restoring configuration: {e}")
+            return False
+
     async def setup_conserver_config(self) -> bool:
         """Setup conserver configuration with ingress list and webhook"""
         try:
@@ -97,6 +172,12 @@ class LoadTester:
             test_dir = Path(self.config.test_directory)
             test_dir.mkdir(parents=True, exist_ok=True)
             logger.info(f"Test directory: {test_dir.resolve()}")
+            
+            # Backup existing configuration
+            backup_path = await self.backup_existing_config()
+            if backup_path:
+                # Store backup path for later restoration
+                self.config_backup_path = backup_path
             
             # Clear existing vCon files from conserver storage
             conserver_test_dir = Path("/root/vcon-server/test_results")
@@ -148,6 +229,26 @@ class LoadTester:
                     }
                 }
             }
+            
+            # Add JLINC tracer if enabled
+            if self.config.jlinc_enabled:
+                config["tracers"] = {
+                    "jlinc": {
+                        "module": "tracers.jlinc",
+                        "options": {
+                            "data_store_api_url": self.config.jlinc_data_store_api_url,
+                            "data_store_api_key": self.config.jlinc_data_store_api_key,
+                            "archive_api_url": self.config.jlinc_archive_api_url,
+                            "archive_api_key": self.config.jlinc_archive_api_key,
+                            "system_prefix": self.config.jlinc_system_prefix,
+                            "agreement_id": self.config.jlinc_agreement_id,
+                            "hash_event_data": self.config.jlinc_hash_event_data,
+                            "dlq_vcon_on_error": self.config.jlinc_dlq_vcon_on_error
+                        }
+                    }
+                }
+                # Add JLINC tracer to the chain
+                config["chains"]["load_test_chain"]["tracers"] = ["jlinc"]
             
             # Save configuration
             config_path = Path(self.config.test_directory) / "load_test_config.yml"
@@ -393,6 +494,24 @@ class LoadTester:
         
         return validation
     
+    async def cleanup(self, restore_original_config: bool = True) -> bool:
+        """Clean up after test completion"""
+        try:
+            if restore_original_config and self.config_backup_path:
+                logger.info("Restoring original conserver configuration...")
+                success = await self.restore_config(self.config_backup_path)
+                if success:
+                    logger.info("Original configuration restored successfully")
+                else:
+                    logger.error("Failed to restore original configuration")
+                return success
+            else:
+                logger.info("Skipping configuration restoration")
+                return True
+        except Exception as e:
+            logger.error(f"Error during cleanup: {e}")
+            return False
+    
     def print_results(self, results: Dict[str, Any], validation: Dict[str, Any]):
         """Print test results in a nice format"""
         table = Table(title="Load Test Results")
@@ -415,14 +534,24 @@ class LoadTester:
 
 
 @click.command()
-@click.option("--conserver-url", default="http://localhost:8000", help="vCon Server URL")
-@click.option("--conserver-token", default="test-token", help="vCon Server API token")
+@click.option("--conserver-url", default=lambda: os.getenv("CONSERVER_URL", "http://localhost:8000"), help="vCon Server URL")
+@click.option("--conserver-token", default=lambda: os.getenv("CONSERVER_TOKEN", "test-token"), help="vCon Server API token")
 @click.option("--test-directory", default="./test_results", help="Directory to save test results")
 @click.option("--webhook-port", default=8080, help="Port for webhook server")
 @click.option("--rate", default=10, help="Requests per second")
 @click.option("--amount", default=100, help="Total number of requests")
 @click.option("--duration", default=60, help="Test duration in seconds")
 @click.option("--sample-vcon-path", default="./sample_vcons", help="Path to sample vCon files")
+@click.option("--jlinc-enabled", is_flag=True, default=lambda: os.getenv("JLINC_ENABLED", "false").lower() == "true", help="Enable JLINC tracer")
+@click.option("--jlinc-data-store-api-url", default=lambda: os.getenv("JLINC_DATA_STORE_API_URL", "http://jlinc-server:9090"), help="JLINC data store API URL")
+@click.option("--jlinc-data-store-api-key", default=lambda: os.getenv("JLINC_DATA_STORE_API_KEY", ""), help="JLINC data store API key")
+@click.option("--jlinc-archive-api-url", default=lambda: os.getenv("JLINC_ARCHIVE_API_URL", "http://jlinc-server:9090"), help="JLINC archive API URL")
+@click.option("--jlinc-archive-api-key", default=lambda: os.getenv("JLINC_ARCHIVE_API_KEY", ""), help="JLINC archive API key")
+@click.option("--jlinc-system-prefix", default=lambda: os.getenv("JLINC_SYSTEM_PREFIX", "VCONTest"), help="JLINC system prefix")
+@click.option("--jlinc-agreement-id", default=lambda: os.getenv("JLINC_AGREEMENT_ID", "00000000-0000-0000-0000-000000000000"), help="JLINC agreement ID")
+@click.option("--jlinc-hash-event-data/--no-jlinc-hash-event-data", default=lambda: os.getenv("JLINC_HASH_EVENT_DATA", "true").lower() == "true", help="Hash event data in JLINC")
+@click.option("--jlinc-dlq-vcon-on-error/--no-jlinc-dlq-vcon-on-error", default=lambda: os.getenv("JLINC_DLQ_VCON_ON_ERROR", "true").lower() == "true", help="Send vCon to DLQ on error in JLINC")
+@click.option("--restore-config/--no-restore-config", default=True, help="Restore original conserver configuration after test")
 def main(
     conserver_url: str,
     conserver_token: str,
@@ -431,7 +560,17 @@ def main(
     rate: int,
     amount: int,
     duration: int,
-    sample_vcon_path: str
+    sample_vcon_path: str,
+    jlinc_enabled: bool,
+    jlinc_data_store_api_url: str,
+    jlinc_data_store_api_key: str,
+    jlinc_archive_api_url: str,
+    jlinc_archive_api_key: str,
+    jlinc_system_prefix: str,
+    jlinc_agreement_id: str,
+    jlinc_hash_event_data: bool,
+    jlinc_dlq_vcon_on_error: bool,
+    restore_config: bool
 ):
     """vCon Server Load Test Application"""
     
@@ -443,7 +582,16 @@ def main(
         rate=rate,
         amount=amount,
         duration=duration,
-        sample_vcon_path=sample_vcon_path
+        sample_vcon_path=sample_vcon_path,
+        jlinc_enabled=jlinc_enabled,
+        jlinc_data_store_api_url=jlinc_data_store_api_url,
+        jlinc_data_store_api_key=jlinc_data_store_api_key,
+        jlinc_archive_api_url=jlinc_archive_api_url,
+        jlinc_archive_api_key=jlinc_archive_api_key,
+        jlinc_system_prefix=jlinc_system_prefix,
+        jlinc_agreement_id=jlinc_agreement_id,
+        jlinc_hash_event_data=jlinc_hash_event_data,
+        jlinc_dlq_vcon_on_error=jlinc_dlq_vcon_on_error
     )
     
     console.print(f"[bold blue]vCon Server Load Test[/bold blue]")
@@ -451,9 +599,15 @@ def main(
     console.print(f"Rate: {config.rate} req/s")
     console.print(f"Amount: {config.amount} requests")
     console.print(f"Duration: {config.duration}s")
+    console.print(f"JLINC Tracer: {'Enabled' if config.jlinc_enabled else 'Disabled'}")
+    if config.jlinc_enabled:
+        console.print(f"  - Data Store API: {config.jlinc_data_store_api_url}")
+        console.print(f"  - Archive API: {config.jlinc_archive_api_url}")
+        console.print(f"  - System Prefix: {config.jlinc_system_prefix}")
     console.print()
     
     async def run_test():
+        tester = None
         try:
             tester = LoadTester(config)
             results = await tester.run_load_test()
@@ -478,6 +632,15 @@ def main(
         except Exception as e:
             console.print(f"[red]Error: {e}[/red]")
             logger.exception("Load test failed")
+        finally:
+            # Always attempt cleanup
+            if tester:
+                console.print("\n[blue]Cleaning up...[/blue]")
+                cleanup_success = await tester.cleanup(restore_config)
+                if cleanup_success:
+                    console.print("[green]Cleanup completed successfully[/green]")
+                else:
+                    console.print("[yellow]Cleanup completed with warnings[/yellow]")
     
     asyncio.run(run_test())
 

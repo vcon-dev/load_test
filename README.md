@@ -5,6 +5,8 @@ A comprehensive load testing tool for the vCon Server that validates the complet
 ## Features
 
 - **Automated Configuration**: Sets up conserver with ingress lists, tagging, and webhook endpoints
+- **JLINC Tracer Support**: Optional integration with JLINC tracing system for event tracking
+- **Environment Variable Configuration**: Secure configuration using .env files for sensitive data
 - **Load Testing**: Configurable rate, amount, and duration testing
 - **Validation**: Validates vCon processing, file saving, and webhook delivery
 - **Performance Metrics**: Measures response times, success rates, and throughput
@@ -26,9 +28,18 @@ A comprehensive load testing tool for the vCon Server that validates the complet
 uv sync
 ```
 
-2. Make sure your vCon Server is running and accessible
+2. Configure environment variables (optional but recommended):
+```bash
+# Copy the example environment file
+cp .env.example .env
 
-3. Ensure sample vCon files are available in the `./sample_vcons/` directory
+# Edit .env with your actual values
+nano .env
+```
+
+3. Make sure your vCon Server is running and accessible
+
+4. Ensure sample vCon files are available in the `./sample_vcons/` directory
 
 ## Usage
 
@@ -47,6 +58,7 @@ uv run load_test_app.py --conserver-url http://localhost:8000 --conserver-token 
 
 ### Command Line Options
 
+#### Basic Options
 - `--conserver-url`: vCon Server URL (default: http://localhost:8000)
 - `--conserver-token`: API token for authentication (default: test-token)
 - `--test-directory`: Directory to save test results (default: ./test_results)
@@ -55,6 +67,20 @@ uv run load_test_app.py --conserver-url http://localhost:8000 --conserver-token 
 - `--amount`: Total number of requests (default: 100)
 - `--duration`: Test duration in seconds (default: 60)
 - `--sample-vcon-path`: Path to sample vCon files (default: ./sample_vcons)
+
+#### JLINC Tracer Options
+- `--jlinc-enabled`: Enable JLINC tracer (flag)
+- `--jlinc-data-store-api-url`: JLINC data store API URL
+- `--jlinc-data-store-api-key`: JLINC data store API key
+- `--jlinc-archive-api-url`: JLINC archive API URL
+- `--jlinc-archive-api-key`: JLINC archive API key
+- `--jlinc-system-prefix`: JLINC system prefix (default: VCONTest)
+- `--jlinc-agreement-id`: JLINC agreement ID
+- `--jlinc-hash-event-data/--no-jlinc-hash-event-data`: Hash event data in JLINC
+- `--jlinc-dlq-vcon-on-error/--no-jlinc-dlq-vcon-on-error`: Send vCon to DLQ on error
+
+#### Configuration Management Options
+- `--restore-config/--no-restore-config`: Restore original conserver configuration after test (default: true)
 
 ### Example Commands
 
@@ -67,7 +93,100 @@ uv run load_test_app.py --rate 5 --amount 10 --duration 30
 
 # Custom test directory
 uv run load_test_app.py --test-directory /tmp/vcon_test_results
+
+# Enable JLINC tracer
+uv run load_test_app.py --jlinc-enabled --jlinc-data-store-api-key your-key
+
+# Using environment variables (recommended for production)
+# Set JLINC_ENABLED=true in .env file, then run:
+uv run load_test_app.py
+
+# Skip configuration restoration (keep test config)
+uv run load_test_app.py --no-restore-config
 ```
+
+## Configuration Management
+
+The application automatically handles conserver configuration to ensure your original setup is preserved:
+
+### Automatic Backup and Restore
+
+1. **Backup**: Before applying the test configuration, the application automatically backs up the existing conserver configuration to a timestamped file in the test directory
+2. **Test Configuration**: Applies the load test configuration with tagging, webhook, and optional JLINC tracer
+3. **Restore**: After the test completes, automatically restores the original configuration (unless disabled with `--no-restore-config`)
+
+### Backup Files
+
+Backup files are saved as `conserver_config_backup_{timestamp}.yml` in the test directory. These files contain the complete original configuration and can be used to manually restore the conserver if needed.
+
+### Manual Configuration Management
+
+```bash
+# Run test without restoring original configuration
+uv run load_test_app.py --no-restore-config
+
+# The backup file will still be created for manual restoration if needed
+```
+
+## Environment Variables
+
+The application supports configuration via environment variables for secure handling of sensitive data like API keys. Create a `.env` file in the project root:
+
+```bash
+# Copy the example file
+cp .env.example .env
+
+# Edit with your values
+nano .env
+```
+
+### Available Environment Variables
+
+- `CONSERVER_URL`: vCon Server URL
+- `CONSERVER_TOKEN`: API token for authentication
+- `JLINC_ENABLED`: Enable JLINC tracer (true/false)
+- `JLINC_DATA_STORE_API_URL`: JLINC data store API URL
+- `JLINC_DATA_STORE_API_KEY`: JLINC data store API key
+- `JLINC_ARCHIVE_API_URL`: JLINC archive API URL
+- `JLINC_ARCHIVE_API_KEY`: JLINC archive API key
+- `JLINC_SYSTEM_PREFIX`: JLINC system prefix
+- `JLINC_AGREEMENT_ID`: JLINC agreement ID
+- `JLINC_HASH_EVENT_DATA`: Hash event data in JLINC (true/false)
+- `JLINC_DLQ_VCON_ON_ERROR`: Send vCon to DLQ on error (true/false)
+
+## JLINC Tracer Integration
+
+The JLINC tracer provides event tracking and audit capabilities for vCon processing. When enabled, it will:
+
+- Track all vCon processing events
+- Store event data in the configured JLINC data store
+- Archive processed vCons for compliance
+- Handle error scenarios with DLQ (Dead Letter Queue)
+
+### Enabling JLINC Tracer
+
+1. Set up your JLINC server and obtain API keys
+2. Configure the environment variables in your `.env` file
+3. Run the load test with JLINC enabled:
+
+```bash
+# Using environment variables (recommended)
+export JLINC_ENABLED=true
+uv run load_test_app.py
+
+# Or using command line flags
+uv run load_test_app.py --jlinc-enabled --jlinc-data-store-api-key your-key
+```
+
+### JLINC Server Requirements
+
+The JLINC tracer requires a running JLINC server accessible at the configured URL (default: `http://jlinc-server:9090`). 
+
+**Example API Keys** (from the provided configuration):
+- Data Store API Key: `ZDU5ZWIxMzc0ZDhjOThlNTRkNTYxYzc1Y`
+- Archive API Key: `NTFhZGRjNzA0MjFlY2ZiYmFiMGU3MjQ2M`
+
+**Note**: If the JLINC server is not accessible, the tracer will report invalid API keys. Ensure your JLINC server is running and accessible before enabling the tracer.
 
 ## How It Works
 
@@ -76,6 +195,7 @@ uv run load_test_app.py --test-directory /tmp/vcon_test_results
    - Random tag addition module
    - File storage for saving processed vCons
    - Webhook endpoint for delivery confirmation
+   - Optional JLINC tracer for event tracking
 
 2. **Load Testing**: 
    - Loads a random sample vCon
@@ -141,6 +261,7 @@ python -c "import logging; logging.basicConfig(level=logging.DEBUG)" load_test_a
 load_test/
 ├── load_test_app.py      # Main application
 ├── pyproject.toml        # Dependencies and configuration
+├── .env.example          # Example environment configuration
 ├── README.md            # This file
 ├── sample_vcons/        # Sample vCon files
 └── test_results/        # Test output directory
