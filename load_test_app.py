@@ -202,11 +202,19 @@ class LoadTester:
             logger.error(f"Error loading sample vCon: {e}")
             return None
     
-    async def send_vcon(self, vcon: Vcon, test_id: str) -> Tuple[bool, float, str]:
-        """Send vCon to conserver and add to ingress list for processing"""
+    async def send_vcon(self, test_id: str) -> Tuple[bool, float, str]:
+        """Send a random vCon to conserver and add to ingress list for processing"""
         start_time = time.time()
         
         try:
+            # Load a random sample vCon for this request
+            vcon = self.load_sample_vcon()
+            if not vcon:
+                end_time = time.time()
+                response_time = end_time - start_time
+                logger.error("Failed to load sample vCon")
+                return False, response_time, "Failed to load sample vCon"
+            
             # Add test metadata to vCon
             vcon.add_tag("load_test_id", test_id)
             vcon.add_tag("test_timestamp", datetime.now(timezone.utc).isoformat())
@@ -267,10 +275,7 @@ class LoadTester:
         if not await self.setup_conserver_config():
             raise Exception("Failed to setup conserver configuration")
         
-        # Load sample vCon
-        sample_vcon = self.load_sample_vcon()
-        if not sample_vcon:
-            raise Exception("Failed to load sample vCon")
+        # No need to load sample vCon here - we'll load a random one for each request
         
         # No need to start webhook server - we have a dedicated one running in Docker
         
@@ -306,7 +311,7 @@ class LoadTester:
                     await asyncio.sleep(1.0 / self.config.rate)
                 
                 # Send vCon
-                success, response_time, response_text = await self.send_vcon(sample_vcon, f"{test_id}_{i}")
+                success, response_time, response_text = await self.send_vcon(f"{test_id}_{i}")
                 
                 test_results["total_requests"] += 1
                 test_results["response_times"].append(response_time)
