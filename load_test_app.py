@@ -98,6 +98,14 @@ class LoadTester:
             test_dir.mkdir(parents=True, exist_ok=True)
             logger.info(f"Test directory: {test_dir.resolve()}")
             
+            # Clear existing vCon files from conserver storage
+            conserver_test_dir = Path("/root/vcon-server/test_results")
+            if conserver_test_dir.exists():
+                vcon_files = list(conserver_test_dir.glob("*.json"))
+                for file in vcon_files:
+                    file.unlink()
+                logger.info(f"Cleared {len(vcon_files)} existing vCon files")
+            
             # Create test configuration
             config = {
                 "links": {
