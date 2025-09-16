@@ -111,7 +111,7 @@ class LoadTester:
                     "webhook": {
                         "module": "links.webhook",
                         "options": {
-                            "webhook-urls": [f"http://68.183.97.185:{self.config.webhook_port}/webhook"]
+                            "webhook-urls": [f"http://webhook-server:{self.config.webhook_port}/webhook"]
                         }
                     }
                 },
@@ -256,13 +256,7 @@ class LoadTester:
         if not sample_vcon:
             raise Exception("Failed to load sample vCon")
         
-        # Start webhook server
-        import uvicorn
-        from uvicorn import Config, Server
-        
-        config = Config(self.app, host="0.0.0.0", port=self.config.webhook_port, log_level="error")
-        server = Server(config)
-        server_task = asyncio.create_task(server.serve())
+        # No need to start webhook server - we have a dedicated one running in Docker
         
         # Wait a moment for server to start
         await asyncio.sleep(1)
@@ -317,20 +311,26 @@ class LoadTester:
         test_results["total_time"] = time.time() - start_time
         
         # Wait for webhooks to arrive (conserver processes immediately)
-        # Keep webhook server running during this time
         logger.info("Waiting for webhooks to arrive (conserver processes immediately)...")
         for i in range(10):  # Wait up to 10 seconds since processing is immediate
             await asyncio.sleep(1)
-            if len(self.webhook_data) > 0:
-                logger.info(f"Webhooks received after {i+1} seconds!")
-                break
+            # Check webhook server for received data
+            try:
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(f"http://localhost:8080/webhooks")
+                    if response.status_code == 200:
+                        webhook_response = response.json()
+                        webhook_count = webhook_response.get("count", 0)
+                        if webhook_count > 0:
+                            logger.info(f"Webhooks received after {i+1} seconds!")
+                            self.webhook_data = webhook_response.get("webhooks", [])
+                            break
+            except Exception as e:
+                logger.debug(f"Error checking webhooks: {e}")
             if i % 2 == 0:  # Log every 2 seconds
                 logger.info(f"Still waiting for webhooks... ({i+1}s elapsed)")
         
         logger.info(f"Webhook server received {len(self.webhook_data)} webhooks total")
-        
-        # Stop webhook server
-        server_task.cancel()
         
         # Count webhook data
         test_results["webhook_received"] = len(self.webhook_data)
