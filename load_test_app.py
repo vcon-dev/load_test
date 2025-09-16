@@ -79,7 +79,9 @@ class LoadTester:
         async def webhook_endpoint(request: Request):
             """Receive webhook data from conserver"""
             try:
+                logger.info("Webhook endpoint called!")
                 data = await request.json()
+                logger.info(f"Webhook data received: {data}")
                 webhook_data = WebhookData(**data)
                 self.webhook_data.append(webhook_data)
                 logger.info(f"Received webhook for vCon {webhook_data.vcon_id}")
@@ -109,7 +111,7 @@ class LoadTester:
                     "webhook": {
                         "module": "links.webhook",
                         "options": {
-                            "webhook-urls": [f"http://localhost:{self.config.webhook_port}/webhook"]
+                            "webhook-urls": [f"http://68.183.97.185:{self.config.webhook_port}/webhook"]
                         }
                     }
                 },
@@ -185,7 +187,7 @@ class LoadTester:
             return None
     
     async def send_vcon(self, vcon: Vcon, test_id: str) -> Tuple[bool, float, str]:
-        """Send vCon to conserver and measure response time"""
+        """Send vCon to conserver and add to ingress list for processing"""
         start_time = time.time()
         
         try:
@@ -194,23 +196,46 @@ class LoadTester:
             vcon.add_tag("test_timestamp", datetime.now(timezone.utc).isoformat())
             
             async with httpx.AsyncClient() as client:
+                # First, create the vCon
                 response = await client.post(
                     f"{self.config.conserver_url}/vcon",
                     json=vcon.to_dict(),
-                    headers={
-                        "x-conserver-api-token": self.config.conserver_token,
-                        "x-ingress-list": "load_test_list"
-                    }
+                    headers={"x-conserver-api-token": self.config.conserver_token}
+                )
+                
+                if response.status_code not in [200, 201]:
+                    end_time = time.time()
+                    response_time = end_time - start_time
+                    logger.error(f"Failed to create vCon: {response.status_code} - {response.text}")
+                    return False, response_time, response.text
+                
+                # Extract vCon UUID from response
+                vcon_response = response.json()
+                vcon_uuid = vcon_response.get("uuid")
+                
+                if not vcon_uuid:
+                    end_time = time.time()
+                    response_time = end_time - start_time
+                    logger.error("No UUID returned from vCon creation")
+                    return False, response_time, "No UUID returned"
+                
+                # Now add the vCon to the ingress list for processing
+                ingress_response = await client.post(
+                    f"{self.config.conserver_url}/vcon/ingress",
+                    json=[vcon_uuid],
+                    params={"ingress_list": "load_test_list"},
+                    headers={"x-conserver-api-token": self.config.conserver_token}
                 )
                 
                 end_time = time.time()
                 response_time = end_time - start_time
                 
-                if response.status_code in [200, 201]:
-                    return True, response_time, response.text
+                if ingress_response.status_code in [200, 201, 204]:
+                    logger.info(f"Successfully added vCon {vcon_uuid} to ingress list")
+                    return True, response_time, f"vCon {vcon_uuid} created and added to ingress list"
                 else:
-                    logger.error(f"Failed to send vCon: {response.status_code} - {response.text}")
-                    return False, response_time, response.text
+                    logger.error(f"Failed to add vCon to ingress list: {ingress_response.status_code} - {ingress_response.text}")
+                    return False, response_time, f"Created vCon but failed to add to ingress: {ingress_response.text}"
                     
         except Exception as e:
             end_time = time.time()
@@ -291,11 +316,21 @@ class LoadTester:
         test_results["end_time"] = datetime.now(timezone.utc).isoformat()
         test_results["total_time"] = time.time() - start_time
         
+        # Wait for webhooks to arrive (conserver processes immediately)
+        # Keep webhook server running during this time
+        logger.info("Waiting for webhooks to arrive (conserver processes immediately)...")
+        for i in range(10):  # Wait up to 10 seconds since processing is immediate
+            await asyncio.sleep(1)
+            if len(self.webhook_data) > 0:
+                logger.info(f"Webhooks received after {i+1} seconds!")
+                break
+            if i % 2 == 0:  # Log every 2 seconds
+                logger.info(f"Still waiting for webhooks... ({i+1}s elapsed)")
+        
+        logger.info(f"Webhook server received {len(self.webhook_data)} webhooks total")
+        
         # Stop webhook server
         server_task.cancel()
-        
-        # Wait for webhooks to arrive
-        await asyncio.sleep(5)
         
         # Count webhook data
         test_results["webhook_received"] = len(self.webhook_data)
