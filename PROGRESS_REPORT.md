@@ -113,10 +113,10 @@ load_test/
 ├── .env.example              # NEW: Environment configuration template
 ├── README.md                 # Comprehensive documentation updates
 ├── PROGRESS_REPORT.md        # NEW: This progress report
-└── test_results/             # Contains backup files and test results
+└── test_output/              # Contains backup files and test results
     ├── conserver_config_backup_*.yml  # Configuration backups
     ├── load_test_config.yml           # Generated test configurations
-    └── test_results_*.json            # Test result files
+    └── load_test_results_*.json       # Test result files
 ```
 
 ## 🚀 **Usage Examples**

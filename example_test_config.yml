@@ -21,7 +21,7 @@ storages:
   file_storage:
     module: storage.file
     options:
-      directory: "./test_results"
+      directory: "./test_output"
 
 chains:
   load_test_chain:

@@ -102,7 +102,9 @@ async def main():
     
     # Test sample vCons
     print("Testing sample vCons...")
-    vcons_ok = test_sample_vcons("./sample_vcons")
+    print("Note: Sample vCon files are not included in this repository.")
+    print("You need to provide your own sample vCon files for testing.")
+    vcons_ok = test_sample_vcons("./sample_data")
     print()
     
     # Test conserver connection

@@ -19,7 +19,7 @@ A comprehensive load testing tool for the vCon Server that validates the complet
 - Python 3.12+
 - uv package manager
 - vCon Server running and accessible
-- Sample vCon files in `./sample_vcons/` directory
+- Sample vCon files (you'll need to provide your own)
 
 ### Setup
 
@@ -39,7 +39,12 @@ nano .env
 
 3. Make sure your vCon Server is running and accessible
 
-4. Ensure sample vCon files are available in the `./sample_vcons/` directory
+4. Ensure you have sample vCon files available for testing (you'll need to provide your own)
+
+5. (Optional) Start the standalone webhook server for testing:
+```bash
+uv run test_webhook.py
+```
 
 ## Usage
 
@@ -61,12 +66,12 @@ uv run load_test_app.py --conserver-url http://localhost:8000 --conserver-token 
 #### Basic Options
 - `--conserver-url`: vCon Server URL (default: http://localhost:8000)
 - `--conserver-token`: API token for authentication (default: test-token)
-- `--test-directory`: Directory to save test results (default: ./test_results)
+- `--test-directory`: Directory to save test results (default: ./test_output)
 - `--webhook-port`: Port for webhook server (default: 8080)
 - `--rate`: Requests per second (default: 10)
 - `--amount`: Total number of requests (default: 100)
 - `--duration`: Test duration in seconds (default: 60)
-- `--sample-vcon-path`: Path to sample vCon files (default: ./sample_vcons)
+- `--sample-vcon-path`: Path to sample vCon files (default: ./sample_data)
 
 #### JLINC Tracer Options
 - `--jlinc-enabled`: Enable JLINC tracer (flag)
@@ -92,7 +97,7 @@ uv run load_test_app.py --rate 50 --amount 1000 --duration 300
 uv run load_test_app.py --rate 5 --amount 10 --duration 30
 
 # Custom test directory
-uv run load_test_app.py --test-directory /tmp/vcon_test_results
+uv run load_test_app.py --test-directory /tmp/vcon_test_output
 
 # Enable JLINC tracer
 uv run load_test_app.py --jlinc-enabled --jlinc-data-store-api-key your-key
@@ -225,7 +230,7 @@ The application provides detailed metrics including:
 
 ## Output Files
 
-- **Test Results**: JSON file with complete test data saved to `test_results/`
+- **Test Results**: JSON file with complete test data saved to the specified test directory
 - **Configuration**: YAML configuration used for conserver setup
 - **Processed vCons**: Saved vCon files in the test directory
 
@@ -242,7 +247,7 @@ The application provides detailed metrics including:
 
 1. **Connection Refused**: Check that vCon Server is running and accessible
 2. **Authentication Failed**: Verify API token is correct
-3. **No Sample vCons**: Ensure sample vCon files exist in the specified directory
+3. **No Sample vCons**: Ensure sample vCon files exist in the specified directory (you'll need to provide your own)
 4. **Port Already in Use**: Change webhook port if 8080 is occupied
 
 ### Debug Mode
@@ -260,11 +265,35 @@ python -c "import logging; logging.basicConfig(level=logging.DEBUG)" load_test_a
 ```
 load_test/
 ├── load_test_app.py      # Main application
+├── demo.py              # Demo script
+├── test_setup.py        # Setup verification script
+├── test_webhook.py      # Standalone webhook server for testing
 ├── pyproject.toml        # Dependencies and configuration
 ├── .env.example          # Example environment configuration
+├── LICENSE              # MIT License
+├── CONTRIBUTING.md      # Contribution guidelines
 ├── README.md            # This file
-├── sample_vcons/        # Sample vCon files
-└── test_results/        # Test output directory
+├── QUICK_REFERENCE.md   # Quick start guide
+├── LOAD_TEST_SUMMARY.md # Test results summary
+├── PROGRESS_REPORT.md   # Development progress report
+├── example_test_config.yml # Example test configuration
+```
+
+### Standalone Webhook Server
+
+The repository includes a standalone webhook server (`test_webhook.py`) for testing webhook functionality independently:
+
+```bash
+# Start the webhook server
+uv run test_webhook.py
+
+# Test webhook endpoint
+curl -X POST http://localhost:8080/webhook \
+  -H 'Content-Type: application/json' \
+  -d '{"test": "data"}'
+
+# Check received webhooks
+curl http://localhost:8080/webhooks
 ```
 
 ### Adding Features
@@ -277,4 +306,12 @@ The application is modular and can be extended with:
 
 ## License
 
-This project is part of the vCon ecosystem and follows the same licensing terms.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Contributing
+
+We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details on how to get started.
+
+## Related Projects
+
+This project is part of the vCon ecosystem. For more information about vCon Server, visit the [vCon Server repository](https://github.com/vcon-dev/vcon-server).

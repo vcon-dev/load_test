@@ -57,9 +57,15 @@ JLINC_SYSTEM_PREFIX=VCONTest
 ## 📁 **Important Files**
 
 - `load_test_app.py`: Main application
+- `demo.py`: Demo script with examples
+- `test_setup.py`: Setup verification script
+- `test_webhook.py`: Standalone webhook server for testing
 - `.env.example`: Environment configuration template
-- `test_results/`: Test outputs and backups
+- `LICENSE`: MIT License
+- `CONTRIBUTING.md`: Contribution guidelines
+- Test outputs and backups: Created in specified test directory
 - `README.md`: Full documentation
+- `QUICK_REFERENCE.md`: This quick reference guide
 
 ## 🔍 **Troubleshooting**
 
@@ -69,14 +75,15 @@ JLINC_SYSTEM_PREFIX=VCONTest
 - Check conserver logs for JLINC processing status
 
 ### Configuration Issues
-- Backup files are saved in `test_results/conserver_config_backup_*.yml`
+- Backup files are saved in the specified test directory as `conserver_config_backup_*.yml`
 - Use `--no-restore-config` to keep test configuration
 - Check conserver logs for configuration errors
 
 ### Performance Issues
 - Start with low rate (1-5 req/s) for testing
 - Monitor webhook delivery rates
-- Check file storage in `test_results/`
+- Check file storage in the specified test directory
+- Ensure you have sample vCon files available for testing
 
 ## 📊 **Expected Results**
 
@@ -111,14 +118,14 @@ Ctrl+C  # Will still run cleanup
 
 ### Manual Configuration Restore
 ```bash
-# Find backup file
-ls test_results/conserver_config_backup_*.yml
+# Find backup file (replace with your test directory)
+ls <test-directory>/conserver_config_backup_*.yml
 
 # Restore manually (if needed)
 curl -X POST http://localhost:8000/config \
   -H "x-conserver-api-token: test-token" \
   -H "Content-Type: application/json" \
-  -d @test_results/conserver_config_backup_*.yml
+  -d @<test-directory>/conserver_config_backup_*.yml
 ```
 
 ### Check System Status
@@ -136,6 +143,33 @@ docker logs vcon-server-jlinc-server-1
 ## 📞 **Support**
 
 - Full documentation: `README.md`
+- Contributing guidelines: `CONTRIBUTING.md`
 - Progress report: `PROGRESS_REPORT.md`
 - Example configuration: `.env.example`
-- Test results: `test_results/` directory
+- Test results: Created in specified test directory
+- License: `LICENSE`
+
+## 🧪 **Testing Tools**
+
+### Standalone Webhook Server
+```bash
+# Start webhook server
+uv run test_webhook.py
+
+# Test webhook endpoint
+curl -X POST http://localhost:8080/webhook \
+  -H 'Content-Type: application/json' \
+  -d '{"test": "data"}'
+```
+
+### Setup Verification
+```bash
+# Verify your setup
+uv run test_setup.py
+```
+
+### Demo Mode
+```bash
+# Run demo to see examples
+uv run demo.py
+```

@@ -49,12 +49,12 @@ class TestConfig(BaseModel):
     """Configuration for load testing"""
     conserver_url: str = "http://localhost:8000"
     conserver_token: str = "test-token"
-    test_directory: str = "./test_results"
+    test_directory: str = "./test_output"
     webhook_port: int = 8080
     rate: int = 10  # requests per second
     amount: int = 100  # total requests
     duration: int = 60  # test duration in seconds
-    sample_vcon_path: str = "./sample_vcons"
+    sample_vcon_path: str = "./sample_data"
     
     # JLINC Tracer Configuration
     jlinc_enabled: bool = False
@@ -180,7 +180,7 @@ class LoadTester:
                 self.config_backup_path = backup_path
             
             # Clear existing vCon files from conserver storage
-            conserver_test_dir = Path("/root/vcon-server/test_results")
+            conserver_test_dir = Path("/root/vcon-server/test_output")
             if conserver_test_dir.exists():
                 vcon_files = list(conserver_test_dir.glob("*.json"))
                 for file in vcon_files:
@@ -213,7 +213,7 @@ class LoadTester:
                     "file_storage": {
                         "module": "storage.file",
                         "options": {
-                            "path": "/app/test_results",
+                            "path": "/app/test_output",
                             "add_timestamp_to_filename": True,
                             "filename": "vcon",
                             "extension": "json"
@@ -457,8 +457,8 @@ class LoadTester:
         # Count webhook data
         test_results["webhook_received"] = len(self.webhook_data)
         
-        # Check saved files (conserver saves to /app/test_results which is mounted at /root/vcon-server/test_results)
-        conserver_test_dir = Path("/root/vcon-server/test_results")
+        # Check saved files (conserver saves to /app/test_output which is mounted at /root/vcon-server/test_output)
+        conserver_test_dir = Path("/root/vcon-server/test_output")
         if conserver_test_dir.exists():
             # Count .json files (conserver saves with .json extension)
             vcon_files = list(conserver_test_dir.glob("*.json"))
@@ -536,12 +536,12 @@ class LoadTester:
 @click.command()
 @click.option("--conserver-url", default=lambda: os.getenv("CONSERVER_URL", "http://localhost:8000"), help="vCon Server URL")
 @click.option("--conserver-token", default=lambda: os.getenv("CONSERVER_TOKEN", "test-token"), help="vCon Server API token")
-@click.option("--test-directory", default="./test_results", help="Directory to save test results")
+@click.option("--test-directory", default="./test_output", help="Directory to save test results")
 @click.option("--webhook-port", default=8080, help="Port for webhook server")
 @click.option("--rate", default=10, help="Requests per second")
 @click.option("--amount", default=100, help="Total number of requests")
 @click.option("--duration", default=60, help="Test duration in seconds")
-@click.option("--sample-vcon-path", default="./sample_vcons", help="Path to sample vCon files")
+@click.option("--sample-vcon-path", default="./sample_data", help="Path to sample vCon files")
 @click.option("--jlinc-enabled", is_flag=True, default=lambda: os.getenv("JLINC_ENABLED", "false").lower() == "true", help="Enable JLINC tracer")
 @click.option("--jlinc-data-store-api-url", default=lambda: os.getenv("JLINC_DATA_STORE_API_URL", "http://jlinc-server:9090"), help="JLINC data store API URL")
 @click.option("--jlinc-data-store-api-key", default=lambda: os.getenv("JLINC_DATA_STORE_API_KEY", ""), help="JLINC data store API key")
@@ -617,7 +617,7 @@ def main(
             tester.print_results(results, validation)
             
             # Save results to file
-            results_file = Path(config.test_directory) / f"test_results_{int(time.time())}.json"
+            results_file = Path(config.test_directory) / f"load_test_results_{int(time.time())}.json"
             results_file.parent.mkdir(parents=True, exist_ok=True)
             
             with open(results_file, 'w') as f:

@@ -65,12 +65,12 @@ def show_configuration_options():
     
     table.add_row("--conserver-url", "http://localhost:8000", "vCon Server URL")
     table.add_row("--conserver-token", "test-token", "API authentication token")
-    table.add_row("--test-directory", "./test_results", "Directory for test results")
+    table.add_row("--test-directory", "./test_output", "Directory for test results")
     table.add_row("--webhook-port", "8080", "Port for webhook server")
     table.add_row("--rate", "10", "Requests per second")
     table.add_row("--amount", "100", "Total number of requests")
     table.add_row("--duration", "60", "Test duration in seconds")
-    table.add_row("--sample-vcon-path", "./sample_vcons", "Path to sample vCon files")
+    table.add_row("--sample-vcon-path", "./sample_data", "Path to sample vCon files")
     
     console.print(table)
 
